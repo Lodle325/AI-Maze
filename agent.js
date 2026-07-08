@@ -5,7 +5,6 @@
 // All your work goes in reward.js.
 // ============================================================
 
-
 // ============================================================
 // Q-TABLE
 // A table of values that tells the agent how good each action
@@ -13,40 +12,36 @@
 // All values start at 0 (the agent knows nothing).
 // ============================================================
 
-const NUM_STATES  = ROWS * COLS;
+const NUM_STATES = ROWS * COLS;
 const NUM_ACTIONS = 4;
 
-let qTable = Array.from(
-  { length: NUM_STATES },
-  () => new Array(NUM_ACTIONS).fill(0)
+let qTable = Array.from({ length: NUM_STATES }, () =>
+  new Array(NUM_ACTIONS).fill(0),
 );
-
 
 // ============================================================
 // TRAINING PARAMETERS
 // These control how the agent learns.
 // ============================================================
 
-const ALPHA         = 0.1;    // learning rate: how much to update on each step (0 to 1)
-const GAMMA         = 0.9;    // discount factor: how much future rewards matter (0 to 1)
-const EPSILON_START = 1.0;    // starting exploration rate (1.0 = fully random at first)
-const EPSILON_MIN   = 0.05;   // minimum exploration rate (always explore a little)
-const EPSILON_DECAY = 0.995;  // how fast exploration decreases each episode
+const ALPHA = 0.1; // learning rate: how much to update on each step (0 to 1)
+const GAMMA = 0.9; // discount factor: how much future rewards matter (0 to 1)
+const EPSILON_START = 1.0; // starting exploration rate (1.0 = fully random at first)
+const EPSILON_MIN = 0; // minimum exploration rate (always explore a little)
+const EPSILON_DECAY = 0; // how fast exploration decreases each episode
 
-const MAX_STEPS = 200;        // maximum steps before an episode is cut short
-
+const MAX_STEPS = 200; // maximum steps before an episode is cut short
 
 // ============================================================
 // AGENT STATE
 // Tracks progress across all episodes.
 // ============================================================
 
-let epsilon      = EPSILON_START;
-let episode      = 0;
+let epsilon = EPSILON_START;
+let episode = 0;
 let goalsReached = 0;
 let episodeRewards = [];
-let recentAvg    = 0;
-
+let recentAvg = 0;
 
 // ============================================================
 // ACTION SELECTION
@@ -64,7 +59,6 @@ function chooseAction(stateIndex) {
   return values.indexOf(Math.max(...values));
 }
 
-
 // ============================================================
 // Q-TABLE UPDATE
 // After taking an action and receiving a reward, update the
@@ -78,11 +72,11 @@ function chooseAction(stateIndex) {
 // ============================================================
 
 function updateQTable(stateIndex, actionIndex, reward, newStateIndex) {
-  const currentQ  = qTable[stateIndex][actionIndex];
+  const currentQ = qTable[stateIndex][actionIndex];
   const bestFuture = Math.max(...qTable[newStateIndex]);
-  qTable[stateIndex][actionIndex] = currentQ + ALPHA * (reward + GAMMA * bestFuture - currentQ);
+  qTable[stateIndex][actionIndex] =
+    currentQ + ALPHA * (reward + GAMMA * bestFuture - currentQ);
 }
-
 
 // ============================================================
 // RUN ONE EPISODE
@@ -96,13 +90,17 @@ function runEpisode() {
 
   for (let step = 0; step < MAX_STEPS; step++) {
     const actionIndex = chooseAction(stateIndex);
-    const result      = takeAction(stateIndex, actionIndex, step);
-    const reward      = getReward(result.prevStateObj, ACTIONS[actionIndex], result.newStateObj);
+    const result = takeAction(stateIndex, actionIndex, step);
+    const reward = getReward(
+      result.prevStateObj,
+      ACTIONS[actionIndex],
+      result.newStateObj,
+    );
 
     updateQTable(stateIndex, actionIndex, reward, result.stateIndex);
 
     totalReward += reward;
-    stateIndex   = result.stateIndex;
+    stateIndex = result.stateIndex;
 
     if (result.newStateObj.reachedGoal) {
       goalsReached++;
@@ -114,7 +112,7 @@ function runEpisode() {
   episode++;
   episodeRewards.push(totalReward);
   const last50 = episodeRewards.slice(-50);
-  recentAvg    = last50.reduce((a, b) => a + b, 0) / last50.length;
+  recentAvg = last50.reduce((a, b) => a + b, 0) / last50.length;
 
   // Decay epsilon: agent explores less over time as it learns
   if (epsilon > EPSILON_MIN) {
@@ -124,20 +122,18 @@ function runEpisode() {
   return stateIndex;
 }
 
-
 // ============================================================
 // RESET
 // Clears the Q-table and all stats so training starts fresh.
 // ============================================================
 
 function resetAgent() {
-  qTable = Array.from(
-    { length: NUM_STATES },
-    () => new Array(NUM_ACTIONS).fill(0)
+  qTable = Array.from({ length: NUM_STATES }, () =>
+    new Array(NUM_ACTIONS).fill(0),
   );
-  epsilon        = EPSILON_START;
-  episode        = 0;
-  goalsReached   = 0;
+  epsilon = EPSILON_START;
+  episode = 0;
+  goalsReached = 0;
   episodeRewards = [];
-  recentAvg      = 0;
+  recentAvg = 0;
 }

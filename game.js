@@ -5,13 +5,12 @@
 // All your work goes in reward.js.
 // ============================================================
 
-
 // ============================================================
 // MAZE CONFIGURATION
 // ============================================================
 
-const ROWS      = 10;
-const COLS      = 10;
+const ROWS = 8;
+const COLS = 8;
 const CELL_SIZE = 48;
 
 // The maze grid.
@@ -21,21 +20,19 @@ const CELL_SIZE = 48;
 // Open areas are intentional -- rows 2 and 4 are wide open
 // so the agent has room to explore before learning.
 const MAZE = [
-  [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],   // row 0
-  [0, 1, 1, 0, 1, 0, 1, 1, 1, 0],   // row 1
-  [0, 0, 0, 0, 0, 0, 0, 0, 1, 0],   // row 2  -- wide open area
-  [1, 1, 0, 1, 1, 1, 0, 0, 1, 0],   // row 3
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],   // row 4  -- completely open
-  [0, 1, 1, 1, 0, 1, 1, 1, 0, 1],   // row 5
-  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0],   // row 6
-  [0, 1, 0, 1, 1, 0, 0, 0, 0, 0],   // row 7  -- open right side
-  [0, 1, 0, 0, 0, 0, 1, 1, 1, 0],   // row 8
-  [0, 0, 0, 1, 0, 0, 0, 0, 0, 0],   // row 9
+  [0, 0, 0, 0, 1, 1, 1, 1], // row 0
+  [0, 1, 1, 0, 0, 0, 0, 1], // row 1
+  [0, 0, 0, 1, 0, 1, 0, 1], // row 2  -- wide open area
+  [1, 1, 0, 0, 0, 1, 0, 0], // row 3
+  [0, 0, 0, 1, 0, 1, 0, 0], // row 4  -- completely open
+  [0, 1, 1, 1, 0, 1, 0, 1], // row 5
+  [0, 0, 0, 1, 0, 0, 0, 0], // row 6
+  [0, 1, 0, 1, 1, 1, 0, 0], // row 7  -- open right side
+  [1, 0, 0, 0, 0, 0, 0, 0], // row 8
 ];
 
 const START = { row: 0, col: 0 };
-const GOAL  = { row: 9, col: 9 };
-
+const GOAL = { row: 7, col: 7 };
 
 // ============================================================
 // ACTIONS
@@ -44,12 +41,11 @@ const GOAL  = { row: 9, col: 9 };
 const ACTIONS = ["up", "right", "down", "left"];
 
 const ACTION_DELTAS = [
-  { drow: -1, dcol:  0 },  // up
-  { drow:  0, dcol:  1 },  // right
-  { drow:  1, dcol:  0 },  // down
-  { drow:  0, dcol: -1 },  // left
+  { drow: -1, dcol: 0 }, // up
+  { drow: 0, dcol: 1 }, // right
+  { drow: 1, dcol: 0 }, // down
+  { drow: 0, dcol: -1 }, // left
 ];
-
 
 // ============================================================
 // STATE ENCODING
@@ -65,7 +61,6 @@ function indexToState(index) {
     col: index % COLS,
   };
 }
-
 
 // ============================================================
 // WORLD QUERIES
@@ -84,7 +79,6 @@ function getDistToGoal(row, col) {
   return Math.abs(row - GOAL.row) + Math.abs(col - GOAL.col);
 }
 
-
 // ============================================================
 // STATE TRANSITIONS
 // ============================================================
@@ -96,7 +90,7 @@ function takeAction(stateIndex, actionIndex, stepCount) {
   const newRow = row + delta.drow;
   const newCol = col + delta.dcol;
 
-  const hitWall   = isWall(newRow, newCol);
+  const hitWall = isWall(newRow, newCol);
   const actualRow = hitWall ? row : newRow;
   const actualCol = hitWall ? col : newCol;
 
@@ -115,16 +109,15 @@ function takeAction(stateIndex, actionIndex, stepCount) {
     },
 
     newStateObj: {
-      row:         actualRow,
-      col:         actualCol,
-      distToGoal:  getDistToGoal(actualRow, actualCol),
+      row: actualRow,
+      col: actualCol,
+      distToGoal: getDistToGoal(actualRow, actualCol),
       reachedGoal: isGoal(actualRow, actualCol),
-      hitWall:     hitWall,
-      steps:       stepCount + 1,
+      hitWall: hitWall,
+      steps: stepCount + 1,
     },
   };
 }
-
 
 // ============================================================
 // RENDERING
@@ -139,9 +132,12 @@ function drawMaze(canvas, agentRow, agentCol, hitWallPos = null) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   // Determine if a hit-wall position is inside the grid
-  const hitInGrid = hitWallPos &&
-    hitWallPos.row >= 0 && hitWallPos.row < ROWS &&
-    hitWallPos.col >= 0 && hitWallPos.col < COLS;
+  const hitInGrid =
+    hitWallPos &&
+    hitWallPos.row >= 0 &&
+    hitWallPos.row < ROWS &&
+    hitWallPos.col >= 0 &&
+    hitWallPos.col < COLS;
 
   // Draw each cell
   for (let r = 0; r < ROWS; r++) {
@@ -149,8 +145,7 @@ function drawMaze(canvas, agentRow, agentCol, hitWallPos = null) {
       const x = c * CELL_SIZE;
       const y = r * CELL_SIZE;
 
-      const isHit = hitInGrid &&
-        hitWallPos.row === r && hitWallPos.col === c;
+      const isHit = hitInGrid && hitWallPos.row === r && hitWallPos.col === c;
 
       if (isHit) {
         // Wall that was just hit -- highlight orange
@@ -168,7 +163,7 @@ function drawMaze(canvas, agentRow, agentCol, hitWallPos = null) {
       ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
 
       ctx.strokeStyle = "#e0e0e0";
-      ctx.lineWidth   = 0.5;
+      ctx.lineWidth = 0.5;
       ctx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
     }
   }
@@ -183,35 +178,45 @@ function drawMaze(canvas, agentRow, agentCol, hitWallPos = null) {
       ctx.fillRect(agentCol * CELL_SIZE, 0, CELL_SIZE, thickness);
     } else if (hitWallPos.row >= ROWS) {
       // tried to go down past last row
-      ctx.fillRect(agentCol * CELL_SIZE, canvas.height - thickness, CELL_SIZE, thickness);
+      ctx.fillRect(
+        agentCol * CELL_SIZE,
+        canvas.height - thickness,
+        CELL_SIZE,
+        thickness,
+      );
     } else if (hitWallPos.col < 0) {
       // tried to go left past col 0
       ctx.fillRect(0, agentRow * CELL_SIZE, thickness, CELL_SIZE);
     } else if (hitWallPos.col >= COLS) {
       // tried to go right past last col
-      ctx.fillRect(canvas.width - thickness, agentRow * CELL_SIZE, thickness, CELL_SIZE);
+      ctx.fillRect(
+        canvas.width - thickness,
+        agentRow * CELL_SIZE,
+        thickness,
+        CELL_SIZE,
+      );
     }
   }
 
   // Labels
   const labelSize = Math.round(CELL_SIZE * 0.2);
-  ctx.textAlign    = "center";
+  ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
   ctx.fillStyle = "#16a34a";
-  ctx.font      = `bold ${labelSize}px sans-serif`;
+  ctx.font = `bold ${labelSize}px sans-serif`;
   ctx.fillText(
     "GOAL",
     GOAL.col * CELL_SIZE + CELL_SIZE / 2,
-    GOAL.row * CELL_SIZE + CELL_SIZE / 2
+    GOAL.row * CELL_SIZE + CELL_SIZE / 2,
   );
 
   ctx.fillStyle = "#1d4ed8";
-  ctx.font      = `${labelSize - 1}px sans-serif`;
+  ctx.font = `${labelSize - 1}px sans-serif`;
   ctx.fillText(
     "START",
     START.col * CELL_SIZE + CELL_SIZE / 2,
-    START.row * CELL_SIZE + CELL_SIZE / 2
+    START.row * CELL_SIZE + CELL_SIZE / 2,
   );
 
   // Agent (drawn last so it appears on top of everything)
@@ -224,33 +229,32 @@ function drawMaze(canvas, agentRow, agentCol, hitWallPos = null) {
   ctx.fill();
 }
 
-
 // ============================================================
 // POLICY VISUALIZATION
 // ============================================================
 
 function visualizePolicy(canvas) {
-  const ctx    = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d");
   const arrows = ["↑", "→", "↓", "←"];
-  const size   = Math.round(CELL_SIZE * 0.32);
+  const size = Math.round(CELL_SIZE * 0.32);
 
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       if (MAZE[r][c] === 1) continue;
       if (r === GOAL.row && c === GOAL.col) continue;
 
-      const state     = stateToIndex(r, c);
-      const qValues   = qTable[state];
+      const state = stateToIndex(r, c);
+      const qValues = qTable[state];
       const bestIndex = qValues.indexOf(Math.max(...qValues));
 
-      ctx.fillStyle    = "rgba(60, 60, 60, 0.4)";
-      ctx.font         = `${size}px sans-serif`;
-      ctx.textAlign    = "center";
+      ctx.fillStyle = "rgba(60, 60, 60, 0.4)";
+      ctx.font = `${size}px sans-serif`;
+      ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(
         arrows[bestIndex],
         c * CELL_SIZE + CELL_SIZE / 2,
-        r * CELL_SIZE + CELL_SIZE / 2
+        r * CELL_SIZE + CELL_SIZE / 2,
       );
     }
   }
