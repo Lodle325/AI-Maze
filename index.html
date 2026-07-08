@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ML Maze Agent</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header>
+    <h1>ML Maze Agent</h1>
+    <p class="subtitle">Watch your AI learn to navigate the maze</p>
+  </header>
+
+  <main>
+
+    <div class="layout">
+
+      <!-- Left: the maze canvas -->
+      <div class="canvas-wrap">
+        <canvas id="maze-canvas"></canvas>
+        <div id="manual-hint" class="manual-hint" style="display: none;">
+          Use arrow keys to move &nbsp;↑ ↓ ← →
+        </div>
+        <div id="goal-banner" class="goal-banner" style="display: none;">You reached the goal!</div>
+      </div>
+
+      <!-- Right: stats and controls -->
+      <aside class="panel">
+
+        <div class="stat-group">
+          <div class="stat">
+            <span class="stat-label">Episode</span>
+            <span class="stat-value" id="stat-episode">0</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Avg score (last 50)</span>
+            <span class="stat-value" id="stat-avg">--</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Explore rate (ε)</span>
+            <span class="stat-value" id="stat-epsilon">1.00</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Goals reached</span>
+            <span class="stat-value" id="stat-goals">0</span>
+          </div>
+        </div>
+
+        <div class="chart-wrap">
+          <p class="chart-title">Score per episode</p>
+          <canvas id="chart-canvas" width="240" height="80"></canvas>
+        </div>
+
+        <!-- Training controls -->
+        <div class="control-group">
+          <button id="pause-btn" class="btn primary">Pause</button>
+          <button id="reset-btn" class="btn secondary">Reset</button>
+          <button id="policy-btn" class="btn secondary">Policy</button>
+        </div>
+        <div class="control-group">
+          <button id="next-btn" class="btn secondary" disabled>Next Episode</button>
+        </div>
+
+        <!-- Watch and manual controls -->
+        <div class="control-group">
+          <button id="watch-btn" class="btn secondary">Watch Agent</button>
+          <button id="manual-btn" class="btn secondary">Play Manually</button>
+        </div>
+
+        <div class="speed-wrap">
+          <label for="speed-slider" class="speed-label">
+            Training speed: <span id="speed-value">10</span> ep/frame
+          </label>
+          <input type="range" id="speed-slider" min="1" max="50" value="10">
+        </div>
+
+        <div class="legend">
+          <div class="legend-item"><span class="swatch blue"></span>Agent</div>
+          <div class="legend-item"><span class="swatch green"></span>Goal</div>
+          <div class="legend-item"><span class="swatch dark"></span>Wall</div>
+          <div class="legend-item"><span class="swatch light"></span>Open path</div>
+        </div>
+
+      </aside>
+
+    </div>
+
+  </main>
+
+  <script src="game.js"></script>
+  <script src="agent.js"></script>
+  <script src="reward.js"></script>
+
+  <script>
+    // ============================================================
+    // MAIN: wires everything together
+    // You do not need to modify this section.
+    // ============================================================
+
+    const mazeCanvas  = document.getElementById("maze-canvas");
+    const chartCanvas = document.getElementById("chart-canvas");
+    mazeCanvas.width  = COLS * CELL_SIZE;
+    mazeCanvas.height = ROWS * CELL_SIZE;
+
+    // Mode flags -- only one can be true at a time
+    let trainingPaused  = false;
+    let watchMode       = false;
+    let manualMode      = false;
+
+    let showPolicy       = false;
+    let episodesPerFrame = 10;
+    let lastAgentState   = stateToIndex(START.row, START.col);
+
+    // Manual mode state
+    let manualState       = stateToIndex(START.row, START.col);
+    let manualGoalReached = false;
+
+    // Watch mode state
+    let watchState = stateToIndex(START.row, START.col);
+    let watchSteps = 0;
+    const WATCH_STEP_MS = 150;   // milliseconds between each visible step
+
+
+    // ============================================================
+    // HELPERS
+    // ============================================================
+    function setMode(mode) {
+      // mode: "training" | "watch" | "manual"
+      watchMode  = mode === "watch";
+      manualMode = mode === "manual";
+
+      // Button labels
+      document.getElementById("pause-btn").textContent  = trainingPaused ? "Resume" : "Pause";
+      document.getElementById("watch-btn").textContent  = watchMode  ? "Stop Watching" : "Watch Agent";
+      document.getElementById("manual-btn").textContent = manualMode ? "Stop Playing"  : "Play Manually";
+      document.getElementById("policy-btn").textContent = showPolicy ? "Hide Policy"   : "Policy";
+
+      document.getElementById("watch-btn").className  = watchMode  ? "btn primary" : "btn secondary";
+      document.getElementById("manual-btn").className = manualMode ? "btn primary" : "btn secondary";
+
+      // Next Episode is only enabled when training is paused and no other mode is active
+      document.getElementById("next-btn").disabled = !trainingPaused || watchMode || manualMode;
+
+      // Arrow key hint
+      document.getElementById("manual-hint").style.display = manualMode ? "block" : "none";
+
+      // Clear goal banner whenever mode changes
+      hideGoalBanner();
+    }
+
+    function showGoalBanner() {
+      document.getElementById("goal-banner").style.display = "block";
+    }
+
+    function hideGoalBanner() {
+      document.getElementById("goal-banner").style.display = "none";
+    }
+
+    function render(stateIndex, hitWallPos = null) {
+      const { row, col } = indexToState(stateIndex);
+      drawMaze(mazeCanvas, row, col, hitWallPos);
+      if (showPolicy) visualizePolicy(mazeCanvas);
+    }
+
+    function updateStats() {
+      document.getElementById("stat-episode").textContent = episode;
+      document.getElementById("stat-avg").textContent     = episode > 0 ? recentAvg.toFixed(2) : "--";
+      document.getElementById("stat-epsilon").textContent = epsilon.toFixed(3);
+      document.getElementById("stat-goals").textContent   = goalsReached;
+    }
+
+    function drawChart() {
+      const ctx  = chartCanvas.getContext("2d");
+      const w    = chartCanvas.width;
+      const h    = chartCanvas.height;
+      const data = episodeRewards;
+
+      ctx.clearRect(0, 0, w, h);
+      if (data.length < 2) return;
+
+      const slice  = data.slice(-200);
+      const minVal = Math.min(...slice);
+      const maxVal = Math.max(...slice);
+      const range  = maxVal - minVal || 1;
+
+      ctx.strokeStyle = "#2563eb";
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      slice.forEach((val, i) => {
+        const x = (i / (slice.length - 1)) * w;
+        const y = h - ((val - minVal) / range) * (h - 8) - 4;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      if (minVal < 0 && maxVal > 0) {
+        const zeroY = h - ((0 - minVal) / range) * (h - 8) - 4;
+        ctx.strokeStyle = "#ccc";
+        ctx.lineWidth   = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, zeroY);
+        ctx.lineTo(w, zeroY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+
+    // ============================================================
+    // TRAINING CONTROLS
+    // ============================================================
+    document.getElementById("pause-btn").addEventListener("click", () => {
+      if (manualMode) return;
+
+      if (watchMode) {
+        // Stop watch mode and toggle training
+        watchMode = false;
+        trainingPaused = !trainingPaused;
+        setMode("training");
+        document.getElementById("pause-btn").textContent = trainingPaused ? "Resume" : "Pause";
+        document.getElementById("next-btn").disabled = !trainingPaused;
+        if (!trainingPaused) requestAnimationFrame(trainingLoop);
+        return;
+      }
+
+      trainingPaused = !trainingPaused;
+      document.getElementById("pause-btn").textContent = trainingPaused ? "Resume" : "Pause";
+      document.getElementById("next-btn").disabled = !trainingPaused;
+      if (!trainingPaused) requestAnimationFrame(trainingLoop);
+    });
+
+    document.getElementById("next-btn").addEventListener("click", () => {
+      if (!trainingPaused || watchMode || manualMode) return;
+
+      // Check reward function before running
+      try {
+        const test = getReward(
+          { row: 0, col: 0, distToGoal: 10, steps: 0 },
+          "right",
+          { row: 0, col: 1, distToGoal: 9, reachedGoal: false, hitWall: false, steps: 1 }
+        );
+        if (test === undefined) {
+          showRewardError("getReward() returned undefined. Make sure your function returns a number.");
+          return;
+        }
+      } catch (err) {
+        showRewardError("Error in reward.js: " + err.message);
+        return;
+      }
+
+      // Run exactly one episode and stay paused
+      lastAgentState = runEpisode();
+      render(lastAgentState);
+      updateStats();
+      drawChart();
+    });
+
+    document.getElementById("reset-btn").addEventListener("click", () => {
+      if (manualMode) {
+        manualState       = stateToIndex(START.row, START.col);
+        manualGoalReached = false;
+        hideGoalBanner();
+        render(manualState);
+        return;
+      }
+      // Reset agent but preserve the current pause state
+      const wasPaused = trainingPaused;
+      watchMode = false;
+      resetAgent();
+      lastAgentState = stateToIndex(START.row, START.col);
+      setMode("training");
+      trainingPaused = wasPaused;
+      document.getElementById("pause-btn").textContent = trainingPaused ? "Resume" : "Pause";
+      document.getElementById("next-btn").disabled = !trainingPaused;
+      render(lastAgentState);
+      updateStats();
+      drawChart();
+      if (!trainingPaused) requestAnimationFrame(trainingLoop);
+    });
+
+    document.getElementById("policy-btn").addEventListener("click", () => {
+      showPolicy = !showPolicy;
+      document.getElementById("policy-btn").textContent = showPolicy ? "Hide Policy" : "Policy";
+      const currentState = manualMode ? manualState : watchMode ? watchState : lastAgentState;
+      render(currentState);
+    });
+
+    document.getElementById("speed-slider").addEventListener("input", (e) => {
+      episodesPerFrame = parseInt(e.target.value);
+      document.getElementById("speed-value").textContent = episodesPerFrame;
+    });
+
+
+    // ============================================================
+    // WATCH AGENT MODE
+    // Steps through one move at a time using the current Q-table.
+    // Uses a greedy policy (no random exploration) so you see the
+    // agent's best current strategy.
+    // ============================================================
+    document.getElementById("watch-btn").addEventListener("click", () => {
+      if (manualMode) return;
+
+      if (watchMode) {
+        // Stop watching, resume training
+        watchMode = false;
+        setMode("training");
+        if (!trainingPaused) requestAnimationFrame(trainingLoop);
+      } else {
+        // Start watching
+        watchState = stateToIndex(START.row, START.col);
+        watchSteps = 0;
+        setMode("watch");
+        render(watchState);
+        setTimeout(watchStep, WATCH_STEP_MS);
+      }
+    });
+
+    function watchStep() {
+      if (!watchMode) return;
+
+      // Pick the best action from the Q-table.
+      // When multiple actions share the same value (including all-zeros on a
+      // fresh reset), choose randomly among them so the agent keeps moving
+      // rather than repeating the same blocked move every step.
+      const values     = qTable[watchState];
+      const maxQ       = Math.max(...values);
+      const bestIdxs   = values.reduce((acc, v, i) => v === maxQ ? [...acc, i] : acc, []);
+      const actionIndex = bestIdxs[Math.floor(Math.random() * bestIdxs.length)];
+      const result      = takeAction(watchState, actionIndex, watchSteps);
+
+      watchState = result.stateIndex;
+      watchSteps++;
+
+      render(watchState, result.hitWallPos);
+
+      if (result.newStateObj.reachedGoal) {
+        // Agent reached the goal -- show it briefly then restart from beginning
+        showGoalBanner();
+        setTimeout(() => {
+          if (!watchMode) return;
+          hideGoalBanner();
+          watchState = stateToIndex(START.row, START.col);
+          watchSteps = 0;
+          render(watchState, null);
+          setTimeout(watchStep, WATCH_STEP_MS);
+        }, 1000);
+        return;
+      }
+
+      if (watchSteps >= MAX_STEPS) {
+        // Agent ran out of steps -- restart
+        watchState = stateToIndex(START.row, START.col);
+        watchSteps = 0;
+        render(watchState);
+      }
+
+      setTimeout(watchStep, WATCH_STEP_MS);
+    }
+
+
+    // ============================================================
+    // MANUAL MODE
+    // ============================================================
+    document.getElementById("manual-btn").addEventListener("click", () => {
+      if (watchMode) return;
+
+      if (manualMode) {
+        // Return to training
+        manualGoalReached = false;
+        setMode("training");
+        if (!trainingPaused) requestAnimationFrame(trainingLoop);
+      } else {
+        // Enter manual mode
+        manualState       = stateToIndex(START.row, START.col);
+        manualGoalReached = false;
+        setMode("manual");
+        render(manualState);
+      }
+    });
+
+    const KEY_TO_ACTION = {
+      ArrowUp:    0,
+      ArrowRight: 1,
+      ArrowDown:  2,
+      ArrowLeft:  3,
+    };
+
+    document.addEventListener("keydown", (e) => {
+      if (!manualMode) return;
+      const actionIndex = KEY_TO_ACTION[e.key];
+      if (actionIndex === undefined) return;
+      e.preventDefault();
+
+      if (manualGoalReached) {
+        manualGoalReached = false;
+        manualState = stateToIndex(START.row, START.col);
+        hideGoalBanner();
+        render(manualState, null);
+        return;
+      }
+
+      const result = takeAction(manualState, actionIndex, 0);
+      manualState  = result.stateIndex;
+      render(manualState, result.hitWallPos);
+
+      if (result.newStateObj.reachedGoal) {
+        manualGoalReached = true;
+        showGoalBanner();
+      }
+    });
+
+
+    // ============================================================
+    // TRAINING LOOP
+    // Runs many full episodes per animation frame for speed.
+    // Does not render individual steps -- use Watch Agent for that.
+    // ============================================================
+    function trainingLoop() {
+      if (trainingPaused || watchMode || manualMode) return;
+
+      // Check reward function is implemented before running
+      try {
+        const test = getReward(
+          { row: 0, col: 0, distToGoal: 10, steps: 0 },
+          "right",
+          { row: 0, col: 1, distToGoal: 9, reachedGoal: false, hitWall: false, steps: 1 }
+        );
+        if (test === undefined) {
+          showRewardError("getReward() returned undefined. Make sure your function returns a number.");
+          return;
+        }
+      } catch (err) {
+        showRewardError("Error in reward.js: " + err.message);
+        return;
+      }
+
+      for (let i = 0; i < episodesPerFrame; i++) {
+        lastAgentState = runEpisode();
+      }
+
+      render(lastAgentState);
+      updateStats();
+      drawChart();
+
+      requestAnimationFrame(trainingLoop);
+    }
+
+    function showRewardError(msg) {
+      const existing = document.getElementById("reward-error");
+      if (existing) return;
+      const el = document.createElement("div");
+      el.id        = "reward-error";
+      el.className = "reward-error";
+      el.textContent = msg;
+      document.querySelector("main").prepend(el);
+    }
+
+
+    // ============================================================
+    // START
+    // ============================================================
+    setMode("training");
+    render(stateToIndex(START.row, START.col));
+    updateStats();
+    requestAnimationFrame(trainingLoop);
+  </script>
+
+</body>
+</html>
