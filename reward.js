@@ -71,13 +71,5 @@
 
 function getReward(state, action, newState) {
   // YOUR CODE GOES HERE
-  if (newState.reachedGoal) return 1;
-  if (newState.hitWall) return -1;
 
-  let progress = state.distToGoal - newState.distToGoal;
-    return 1000
-  if (progress > 0) {
-    return 1000; // small reward for getting closer to the goal
-  }
-  return -1; // small penalty for each step to encourage shorter paths
 }
